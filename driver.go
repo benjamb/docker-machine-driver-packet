@@ -31,7 +31,7 @@ type Driver struct {
 	ProjectID               string
 	Plan                    string
 	HardwareReserverationID string
-	Facility                string
+	Facility                []string
 	OperatingSystem         string
 	BillingCycle            string
 	DeviceID                string
@@ -74,10 +74,10 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Value:  "ubuntu_16_04",
 			EnvVar: "PACKET_OS",
 		},
-		mcnflag.StringFlag{
+		mcnflag.StringSliceFlag{
 			Name:   "packet-facility-code",
-			Usage:  "Packet facility code",
-			Value:  "ewr1",
+			Usage:  "Packet facility code, the first with availability is used (specify \"any\" if no preference)",
+			Value:  []string{"ewr1"},
 			EnvVar: "PACKET_FACILITY_CODE",
 		},
 		mcnflag.StringFlag{
@@ -135,7 +135,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.ApiKey = flags.String("packet-api-key")
 	d.ProjectID = flags.String("packet-project-id")
 	d.OperatingSystem = flags.String("packet-os")
-	d.Facility = flags.String("packet-facility-code")
+	d.Facility = flags.StringSlice("packet-facility-code")
 	d.BillingCycle = flags.String("packet-billing-cycle")
 	d.UserDataFile = flags.String("packet-userdata")
 
@@ -198,17 +198,15 @@ func (d *Driver) PreCreateCheck() error {
 		return fmt.Errorf("specified --packet-os not one of %v", strings.Join(flavors, ", "))
 	}
 
-	if d.Facility == "any" {
-		return nil
-	}
-
 	validFacilities, err := d.getFacilities()
 	if err != nil {
 		return err
 	}
-	if !stringInSlice(d.Facility, validFacilities) {
-		return fmt.Errorf("a specified facility is not one of %v",
-			strings.Join(validFacilities, ", "))
+	for _, facility := range d.Facility {
+		if facility != "any" && !stringInSlice(facility, validFacilities) {
+			return fmt.Errorf("a specified facility is not one of %s, %s",
+				strings.Join(validFacilities, ", "), "any")
+		}
 	}
 
 	return nil
@@ -244,7 +242,7 @@ func (d *Driver) Create() error {
 		Hostname:              d.MachineName,
 		Plan:                  d.Plan,
 		HardwareReservationID: hardwareReservationId,
-		Facility:              []string{d.Facility},
+		Facility:              d.Facility,
 		OS:                    d.OperatingSystem,
 		BillingCycle:          d.BillingCycle,
 		ProjectID:             d.ProjectID,
